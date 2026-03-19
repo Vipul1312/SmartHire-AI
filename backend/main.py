@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
-import spacy
 from sentence_transformers import SentenceTransformer
 import os, re, io, requests, unicodedata
 from dotenv import load_dotenv
@@ -37,7 +36,6 @@ if GEMINI_KEY:
 else:
     gemini = None
 
-nlp      = spacy.load("en_core_web_sm")
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 db = None
@@ -215,24 +213,44 @@ CITY_MULTIPLIER = {
 
 # ── NLP Functions ─────────────────────────────────────────────────────────────
 def extract_entities(text: str) -> dict:
-    doc = nlp(text)
-    ents = defaultdict(list)
-    for e in doc.ents:
-        if e.label_ == "ORG": ents["organizations"].append(e.text)
-        elif e.label_ == "PERSON": ents["name"].append(e.text)
-        elif e.label_ == "DATE": ents["dates"].append(e.text)
-        elif e.label_ == "GPE": ents["locations"].append(e.text)
+    # Pure regex — no spaCy dependency needed
     emails   = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
     phones   = re.findall(r'[\+\d][\d\s\-]{9,}', text)
     linkedin = re.findall(r'linkedin\.com/in/[\w-]+', text, re.IGNORECASE)
+
+    # Extract name — first capitalized line (usually candidate name)
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    name = []
+    for line in lines[:5]:
+        if re.match(r'^[A-Z][a-z]+ [A-Z][a-z]+', line) and len(line.split()) <= 4:
+            name = [line.strip()]
+            break
+
+    # Extract organizations via common patterns
+    orgs = re.findall(r'(?:at|@|with|for)\s+([A-Z][A-Za-z0-9\s&.,-]{2,30}?)(?:\s*[,|\n]|$)', text)
+    orgs = list(set([o.strip() for o in orgs if len(o.strip()) > 2]))[:5]
+
+    # Extract locations
+    locations = re.findall(r'\b(Mumbai|Delhi|Bangalore|Hyderabad|Chennai|Pune|Kolkata|Noida|Gurgaon|India|Remote)\b', text, re.IGNORECASE)
+    locations = list(set(locations))[:3]
+
+    # Detect sections
     sections = []
     lower = text.lower()
-    for sec, kws in {"experience":["experience","work","internship"],"education":["education","degree","university"],"skills":["skills","technologies"],"projects":["projects"],"certifications":["certifications","certificates"]}.items():
-        if any(k in lower for k in kws): sections.append(sec)
+    for sec, kws in {
+        "experience": ["experience", "work", "internship"],
+        "education": ["education", "degree", "university"],
+        "skills": ["skills", "technologies"],
+        "projects": ["projects"],
+        "certifications": ["certifications", "certificates"]
+    }.items():
+        if any(k in lower for k in kws):
+            sections.append(sec)
+
     return {
-        "name": list(set(ents["name"]))[:1],
-        "organizations": list(set(ents["organizations"]))[:5],
-        "locations": list(set(ents["locations"]))[:3],
+        "name": name,
+        "organizations": orgs,
+        "locations": locations,
         "email": emails[0] if emails else None,
         "phone": phones[0] if phones else None,
         "linkedin": linkedin[0] if linkedin else None,
