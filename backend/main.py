@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
-from sentence_transformers import SentenceTransformer
 import os, re, io, requests, unicodedata
 from dotenv import load_dotenv
 from collections import defaultdict
@@ -36,7 +35,6 @@ if GEMINI_KEY:
 else:
     gemini = None
 
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 db = None
 try:
@@ -277,8 +275,7 @@ def expand_skills(skills: set) -> set:
     return expanded
 
 def match_score(resume: str, jd: str):
-    embedder.encode(resume, convert_to_tensor=True)
-    embedder.encode(jd, convert_to_tensor=True)
+    # Pure skill-based matching (no heavy ML model needed)
     r_skills = expand_skills(extract_skills(resume))
     j_skills = extract_skills(jd)
     matched = r_skills & j_skills
