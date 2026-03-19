@@ -1,0 +1,13 @@
+{
+  "name": "smarthire-ai",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail false --restart-tries -1 --restart-after 2000 \"npm run frontend\" \"npm run backend\"",
+    "frontend": "cd frontend && npm run dev",
+    "backend": "cd backend && python -m uvicorn main:app --reload --port 8000"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.1.0"
+  }
+}
