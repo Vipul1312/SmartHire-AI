@@ -23,7 +23,17 @@ except ImportError:
 load_dotenv()
 
 app = FastAPI(title="SmartHire AI", version="2.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://smart-hire-ai-nu.vercel.app",
+        "https://*.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 GROQ_KEY   = os.getenv("GROQ_API_KEY", "")
