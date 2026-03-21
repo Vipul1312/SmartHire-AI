@@ -155,7 +155,7 @@ export default function ResumeBuilder() {
     }
     setLoading(true);
     try {
-      const res = await buildResume(form);
+      const res = await buildResume({ ...form, template: selectedTemplate?.id || "fresh" });
       setResult(res);
       setStep("preview");
     } catch (e) { alert("Failed: " + e.message); }
@@ -176,6 +176,64 @@ export default function ResumeBuilder() {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadPDF = () => {
+    if (!result) return;
+    const { contact, summary, skills, experience, education, projects, certifications, template, section_order } = result.resume_sections;
+    const name = contact.name || "Resume";
+    const contactLine = [contact.email, contact.phone, contact.location, contact.linkedin, contact.github].filter(Boolean).join(" | ");
+    const tmpl = template || selectedTemplate?.id || "fresh";
+
+    // Template-specific accent colors
+    const accentColor = tmpl === "fresher" ? "#0077b6" : tmpl === "experienced" ? "#1a6b3c" : tmpl === "datascience" ? "#7c3aed" : "#1a6b3c";
+    const accentLight = tmpl === "fresher" ? "#e8f4fd" : tmpl === "experienced" ? "#f0fdf4" : tmpl === "datascience" ? "#faf5ff" : "#f0fdf4";
+    const accentBorder = tmpl === "fresher" ? "#90cdf4" : tmpl === "experienced" ? "#86efac" : tmpl === "datascience" ? "#d8b4fe" : "#86efac";
+
+    // Build sections in template order
+    const sectionMap = {
+      summary: summary ? `<h2>Professional Summary</h2><p>${summary}</p>` : "",
+      skills: skills && skills.length ? `<h2>Technical Skills</h2><div class="skills-wrap">${skills.map(s => `<span class="skill-tag">${s}</span>`).join("")}</div>` : "",
+      experience: experience && experience.length ? `<h2>Work Experience</h2><ul>${experience.map(e => `<li>${e}</li>`).join("")}</ul>` : "",
+      education: education && education.length ? `<h2>Education</h2><ul>${education.map(e => `<li>${e}</li>`).join("")}</ul>` : "",
+      projects: projects && projects.length ? `<h2>Projects</h2><ul>${projects.map(p => `<li>${p}</li>`).join("")}</ul>` : "",
+      certifications: certifications && certifications.length ? `<h2>Certifications</h2><ul>${certifications.map(c => `<li>${c}</li>`).join("")}</ul>` : "",
+    };
+
+    const order = (section_order || ["summary","skills","experience","education","projects","certifications"]).filter(s => s !== "contact");
+    const sectionsHtml = order.map(s => sectionMap[s] || "").join("");
+
+    const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8"/>
+<title>${name} - Resume</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Calibri", Arial, sans-serif; font-size: 11pt; color: #222; background: #fff; padding: 32px 40px; max-width: 750px; margin: 0 auto; }
+  h1 { font-size: 22pt; font-weight: 900; color: #1a1a1a; letter-spacing: 0.02em; margin-bottom: 4px; }
+  .contact-line { font-size: 10pt; color: #444; margin-bottom: 18px; border-bottom: 2px solid ${accentColor}; padding-bottom: 10px; }
+  h2 { font-size: 11pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: ${accentColor}; border-bottom: 1px solid ${accentBorder}; padding-bottom: 3px; margin: 16px 0 8px; }
+  p { font-size: 10.5pt; line-height: 1.55; color: #333; margin-bottom: 6px; }
+  ul { padding-left: 16px; margin-bottom: 4px; }
+  li { font-size: 10.5pt; line-height: 1.6; color: #333; margin-bottom: 3px; }
+  .skills-wrap { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .skill-tag { background: ${accentLight}; border: 1px solid ${accentBorder}; border-radius: 4px; padding: 2px 9px; font-size: 9.5pt; color: ${accentColor}; font-weight: 600; }
+  @page { margin: 20mm 18mm; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+  <h1>${name}</h1>
+  <div class="contact-line">${contactLine}</div>
+  ${sectionsHtml}
+</body></html>`;
+
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    if (win) {
+      win.onload = () => { setTimeout(() => { win.print(); }, 600); };
+    }
   };
 
   // ── SECTIONS CONFIG ────────────────────────────────────────────────────────
@@ -433,6 +491,7 @@ export default function ResumeBuilder() {
             <button style={S.btnGhost} onClick={() => setStep("form")}>✏ Edit</button>
             <button style={S.btnGhost} onClick={() => setStep("template")}>🔄 New Resume</button>
             <button style={S.btn} onClick={copyResume}>{copied ? "✓ Copied!" : "📋 Copy Resume"}</button>
+            <button style={{ ...S.btn, background:"linear-gradient(135deg,#7c3aed,#5b21b6)" }} onClick={downloadPDF}>⬇️ Download PDF</button>
           </div>
         </div>
 

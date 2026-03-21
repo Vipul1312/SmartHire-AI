@@ -538,24 +538,114 @@ class ResumeBuilderRequest(BaseModel):
     skills: list = []
     projects: list = []
     certifications: list = []
+    template: str = "fresher"  # fresher | experienced | datascience | fresh
 
 @app.post("/build-resume")
 async def build_resume(req: ResumeBuilderRequest):
-    skills_str = ", ".join(req.skills[:10]) if req.skills else "various technologies"
-    if req.summary:
-        enhanced_summary = call_gemini(f"Improve this professional summary in 3-4 sentences. Keep it concise and ATS-friendly:\n{req.summary}")
+    skills_str = ", ".join(req.skills[:12]) if req.skills else "various technologies"
+    template = req.template or "fresher"
+
+    # ── Template-specific AI prompts ──────────────────────────────
+    # Normalize template IDs
+    if template in ["data", "datascience", "data-science"]:
+        template = "datascience"
+    elif template in ["blank", "fresh", "start-fresh"]:
+        template = "fresh"
+
+    if template == "fresher":
+        if req.summary:
+            enhanced_summary = call_gemini(
+                f"Improve this fresher/student summary in 3 sentences. Focus on passion, learning ability, academic projects, and career goals. ATS-friendly:\n{req.summary}"
+            )
+        else:
+            enhanced_summary = call_gemini(
+                f"Write a 3-sentence professional summary for a fresher/student named {req.name} with skills: {skills_str}. "
+                f"Focus on: enthusiasm for technology, academic background, project work, and eagerness to contribute. "
+                f"Do NOT mention years of experience. ATS-friendly."
+            )
+
+    elif template == "experienced":
+        if req.summary:
+            enhanced_summary = call_gemini(
+                f"Improve this experienced professional summary in 3-4 sentences. Highlight years of experience, key achievements with metrics, leadership, and business impact. ATS-friendly:\n{req.summary}"
+            )
+        else:
+            enhanced_summary = call_gemini(
+                f"Write a 3-4 sentence professional summary for an experienced software engineer named {req.name} with skills: {skills_str}. "
+                f"Focus on: proven track record, technical expertise, team leadership, and measurable business impact. "
+                f"Use strong action words. ATS-friendly."
+            )
+
+    elif template == "datascience":
+        if req.summary:
+            enhanced_summary = call_gemini(
+                f"Improve this Data Science/ML professional summary in 3-4 sentences. Highlight ML models built, datasets worked on, accuracy metrics, and business impact. ATS-friendly:\n{req.summary}"
+            )
+        else:
+            enhanced_summary = call_gemini(
+                f"Write a 3-4 sentence professional summary for a Data Scientist/ML Engineer named {req.name} with skills: {skills_str}. "
+                f"Focus on: ML model development, data analysis, model accuracy metrics, Python/ML frameworks expertise. "
+                f"ATS-friendly for AI/ML roles."
+            )
+
+    else:  # fresh/scratch
+        if req.summary:
+            enhanced_summary = call_gemini(
+                f"Improve this professional summary in 3-4 sentences. Make it compelling and ATS-friendly:\n{req.summary}"
+            )
+        else:
+            enhanced_summary = call_gemini(
+                f"Write a compelling 3-sentence professional summary for {req.name} with skills: {skills_str}. ATS-friendly."
+            )
+
+    # ── Template-specific section ordering ────────────────────────
+    # Normalize template IDs
+    if template in ["data", "datascience", "data-science"]:
+        template = "datascience"
+    elif template in ["blank", "fresh", "start-fresh"]:
+        template = "fresh"
+
+    if template == "fresher":
+        section_order = ["contact", "summary", "education", "skills", "projects", "experience", "certifications"]
+    elif template == "experienced":
+        section_order = ["contact", "summary", "experience", "skills", "projects", "education", "certifications"]
+    elif template == "datascience":
+        section_order = ["contact", "summary", "skills", "projects", "experience", "education", "certifications"]
     else:
-        enhanced_summary = call_gemini(f"Write a 3-sentence professional summary for {req.name} with skills: {skills_str}. Make it ATS-friendly.")
+        section_order = ["contact", "summary", "experience", "education", "skills", "projects", "certifications"]
+
+    # Enhance experience bullets for experienced template
+    enhanced_experience = req.experience
+    if template in ["experienced"] and req.experience:
+        exp_text = "\n".join(req.experience[:5])
+        enhanced_raw = call_gemini(
+            f"Rewrite these work experience bullet points for an experienced professional. "
+            f"Add metrics, numbers, and strong action verbs. Keep each bullet under 2 lines.\n{exp_text}"
+        )
+        enhanced_experience = [l.strip().lstrip("•-").strip() for l in enhanced_raw.split("\n") if l.strip()][:8]
+
+    # Enhance project bullets for fresher/datascience
+    enhanced_projects = req.projects
+    if template in ["fresher", "data"] and req.projects:
+        proj_text = "\n".join(req.projects[:5])
+        enhanced_raw = call_gemini(
+            f"Rewrite these project descriptions to be more impactful. "
+            f"For {'fresher' if template=='fresher' else 'Data Science/ML'} roles. Add tech stack used and impact/results.\n{proj_text}"
+        )
+        enhanced_projects = [l.strip().lstrip("•-").strip() for l in enhanced_raw.split("\n") if l.strip()][:8]
 
     sections = {
         "contact": {"name": req.name, "email": req.email, "phone": req.phone, "location": req.location, "linkedin": req.linkedin, "github": req.github},
         "summary": enhanced_summary,
-        "experience": req.experience,
+        "experience": enhanced_experience,
         "education": req.education,
         "skills": req.skills,
-        "projects": req.projects,
+        "projects": enhanced_projects,
         "certifications": req.certifications,
+        "section_order": section_order,
+        "template": template,
     }
+
     full_text = f"{req.name} {req.email} {req.phone} {enhanced_summary} {' '.join(req.skills)}"
     ats = ats_score(full_text, list(extract_skills(full_text)), [])
     return {"resume_sections": sections, "ats_preview_score": ats["ats_score"], "ats_tips": ats["ats_tips"]}
